@@ -59,7 +59,7 @@ class UKEconomicDataFetcher:
         logger.info("UKEconomicDataFetcher initialized")
 
     def _load_cache(self) -> None:
-        """캐시 파일에서 데이터를 로드합니다."""
+        """Loads data from cache file."""
         try:
             if self._cache_file.exists():
                 with open(self._cache_file, 'r') as f:
@@ -70,7 +70,7 @@ class UKEconomicDataFetcher:
             self._cache = {}
 
     def _save_cache(self) -> None:
-        """캐시 데이터를 파일에 저장합니다."""
+        """Saves cache data to file."""
         try:
             with open(self._cache_file, 'w') as f:
                 json.dump(self._cache, f)
@@ -79,10 +79,10 @@ class UKEconomicDataFetcher:
             logger.warning(f"Failed to save cache: {str(e)}")
 
     def _get_default_data(self, date: str) -> dict:
-        """날짜에 따른 기본 데이터를 생성합니다."""
+        """Generates base data according to date."""
         try:
             dt = datetime.strptime(date, "%Y-%m-%d")
-            # 주말이나 공휴일은 더 낮은 값을 반환
+            # Returns lower values for weekends and bank holidays
             is_weekend = dt.weekday() >= 5
             seasonal_context = self._get_seasonal_context(dt)
             
@@ -114,7 +114,7 @@ class UKEconomicDataFetcher:
 
     async def fetch_retail_sales(self, date: str) -> dict:
         """Fetch retail sales data from ONS API with caching."""
-        # 캐시 확인
+        # Check cache
         cache_key = f"retail_sales_{date}"
         if cache_key in self._cache:
             logger.info(f"Using cached data for {date}")
@@ -127,8 +127,8 @@ class UKEconomicDataFetcher:
                 "end_date": date
             }
             
-            # Rate limiting
-            await asyncio.sleep(0.1)  # API 호출 간 간격 추가
+            # Add delay between API calls
+            await asyncio.sleep(0.1)
             
             response = await self.client.get(url, headers=self.headers, params=params)
             if response.status_code == 429:  # Rate limit
@@ -140,7 +140,7 @@ class UKEconomicDataFetcher:
             response.raise_for_status()
             data = response.json()
             
-            # 캐시 업데이트
+            # Update cache
             self._cache[cache_key] = data
             self._save_cache()
             
@@ -181,8 +181,8 @@ class UKEconomicDataFetcher:
             if not api_key:
                 raise ValueError("Weather API key not configured")
             
-            # 실제 날씨 API 호출 로직 구현
-            # 임시 데이터
+            # Implement actual weather API call logic
+            # Temporary data
             data = {"temperature": 15, "condition": "sunny"}
             
             self._cache[cache_key] = data
@@ -196,7 +196,7 @@ class UKEconomicDataFetcher:
     async def fetch_transport_issues(self) -> dict:
         """Fetch current transport issues from TfL API with caching."""
         cache_key = "transport_current"
-        cache_timeout = 300  # 5분
+        cache_timeout = 300  # 5 minutes
 
         if cache_key in self._cache:
             cached_data = self._cache[cache_key]
@@ -272,12 +272,12 @@ class UKEconomicDataFetcher:
             if 3 <= date.month <= 4:
                 events.append("Easter period")
             
-            # School holidays (영국 학교 방학 기간)
+            # School holidays (UK school holiday periods)
             uk_school_holidays = {
-                (7, 20): (9, 1),  # 여름 방학
-                (12, 20): (1, 4),  # 크리스마스 방학
-                (4, 1): (4, 15),   # 부활절 방학
-                (10, 25): (11, 2)  # 가을 방학
+                (7, 20): (9, 1),  # Summer holiday
+                (12, 20): (1, 4),  # Christmas holiday
+                (4, 1): (4, 15),   # Easter holiday
+                (10, 25): (11, 2)  # Autumn holiday
             }
             
             for (start_month, start_day), (end_month, end_day) in uk_school_holidays.items():
@@ -287,7 +287,7 @@ class UKEconomicDataFetcher:
                     events.append("School holidays")
                     break
             
-            # Bank holidays (영국 공휴일)
+            # Bank holidays (UK bank holidays)
             bank_holidays = [
                 (1, 1),    # New Year's Day
                 (5, 1),    # Early May Bank Holiday
@@ -300,7 +300,7 @@ class UKEconomicDataFetcher:
             if (date.month, date.day) in bank_holidays:
                 events.append("Bank holiday")
             
-            # 계절성
+            # Seasonal
             seasons = {
                 (12, 1): "Winter shopping season",
                 (3, 1): "Spring shopping season",
