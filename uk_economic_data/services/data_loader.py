@@ -3,6 +3,7 @@ from datetime import datetime
 import logging
 from typing import Optional, List
 import os
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +19,14 @@ class DataLoader:
     VALID_GENDERS = {'M', 'F'}
     MIN_AGE = 0
     MAX_AGE = 100
+    CSV_SIZE_THRESHOLD = 10 * 1024 * 1024  # 10MB
+    LOAD_TIME_THRESHOLD = 1.0  # 1 second
     
     @staticmethod
     def load_data(path: str = "data/data.csv") -> Optional[pd.DataFrame]:
         """
-        Read CSV and convert 'date' column to datetime.
+        Read data file and convert to DataFrame.
+        Automatically converts large CSV files to Parquet format for better performance.
         
         Args:
             path: Path to the data file
@@ -36,8 +40,46 @@ class DataLoader:
         try:
             if not os.path.exists(path):
                 raise DataLoaderError(f"Data file not found: {path}")
-                
-            df = pd.read_csv(path)
+            
+            # Check if Parquet version exists
+            parquet_path = path.replace('.csv', '.parquet')
+            if os.path.exists(parquet_path):
+                logger.info(f"Loading Parquet file: {parquet_path}")
+                return pd.read_parquet(parquet_path)
+            
+            # Check CSV file size and loading time
+            file_size = os.path.getsize(path)
+            start_time = time.time()
+            
+            # Read CSV with explicit data types and date parsing
+            df = pd.read_csv(
+                path,
+                dtype={
+                    'customer_id': str,
+                    'store_id': str,
+                    'age': int,
+                    'gender': str,
+                    'age_group': str,
+                    'product_name': str,
+                    'category': str,
+                    'units_sold': int,
+                    'unit_price': float,
+                    'discount_applied': float,
+                    'discounted': bool,
+                    'sales_amount': float
+                },
+                parse_dates=['date'],
+                date_parser=lambda x: pd.to_datetime(x, format='%Y-%m-%d'),
+                na_values=['', 'NA', 'NULL', 'null', 'NaN', 'nan'],
+                encoding='utf-8'
+            )
+            
+            load_time = time.time() - start_time
+            
+            if file_size >= DataLoader.CSV_SIZE_THRESHOLD or load_time >= DataLoader.LOAD_TIME_THRESHOLD:
+                logger.info(f"Converting CSV to Parquet for better performance (size: {file_size/1024/1024:.1f}MB, load time: {load_time:.1f}s)")
+                df.to_parquet(parquet_path)
+                logger.info(f"Created Parquet file: {parquet_path}")
             
             if df.empty:
                 raise DataLoaderError(f"Data file is empty: {path}")
@@ -71,13 +113,41 @@ class DataLoader:
             if df is None or df.empty:
                 raise DataLoaderError("Input DataFrame is None or empty")
 
+            # Create a copy to avoid SettingWithCopyWarning
+            df = df.copy()
+
             # Check required columns
             missing_columns = [col for col in DataLoader.REQUIRED_COLUMNS if col not in df.columns]
             if missing_columns:
                 raise DataLoaderError(f"Missing required columns: {missing_columns}")
 
-            # Convert date column to datetime
-            df['date'] = pd.to_datetime(df['date'])
+            # Keep only required columns
+            df = df[DataLoader.REQUIRED_COLUMNS].copy()
+            
+            # Clean date column
+            df.loc[:, 'date'] = df['date'].astype(str).str.strip()
+            
+            # Convert date column to datetime with enhanced error handling
+            try:
+                # First attempt: Try standard datetime conversion with explicit format
+                df.loc[:, 'date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+            except Exception as e:
+                logger.warning(f"Explicit format date conversion failed: {str(e)}")
+                try:
+                    # Second attempt: Try standard datetime conversion
+                    df.loc[:, 'date'] = pd.to_datetime(df['date'])
+                except Exception as e:
+                    logger.warning(f"Standard date conversion failed: {str(e)}")
+                    try:
+                        # Third attempt: Try with coerce=True to handle invalid dates
+                        df.loc[:, 'date'] = pd.to_datetime(df['date'], errors='coerce')
+                        # Remove rows with invalid dates
+                        invalid_dates = df['date'].isna().sum()
+                        if invalid_dates > 0:
+                            logger.warning(f"Removed {invalid_dates} rows with invalid dates")
+                            df = df.dropna(subset=['date'])
+                    except Exception as e:
+                        raise DataLoaderError(f"Failed to convert date column to datetime: {str(e)}")
             
             # Remove rows with missing values
             missing_before = df.isnull().sum().sum()

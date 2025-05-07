@@ -416,10 +416,16 @@ class AnalysisService:
 
     def _filter_data(self, df: pd.DataFrame, gender: str, min_age: int, max_age: int) -> pd.DataFrame:
         """Filter DataFrame by gender and age range"""
-        return df[(df['age'] >= min_age) & (df['age'] <= max_age) & (df['gender'] == gender)]
+        # Create a copy to avoid SettingWithCopyWarning
+        filtered_df = df.copy()
+        return filtered_df[(filtered_df['age'] >= min_age) & 
+                         (filtered_df['age'] <= max_age) & 
+                         (filtered_df['gender'] == gender)]
 
     def _get_top_products(self, df: pd.DataFrame, top_n: int) -> List[str]:
         """Get top N products by sales fluctuation"""
+        # Create a copy to avoid SettingWithCopyWarning
+        df = df.copy()
         df['fluctuation'] = df.groupby('product_name')['sales_amount'].transform(
             lambda x: abs(x.max() - x.min())
         )
@@ -433,12 +439,16 @@ class AnalysisService:
         """Generate insights for each product using batch processing"""
         insights = {}
         
+        # Create a copy to avoid SettingWithCopyWarning
+        df = df.copy()
+        
         # Split products into batches
         for i in range(0, len(products), self.config.batch_size):
             batch = products[i:i + self.config.batch_size]
             tasks = []
             
             for product in batch:
+                # Create a copy for each product to avoid SettingWithCopyWarning
                 product_data = df[df['product_name'] == product].copy()
                 max_sales_date = product_data.loc[product_data['sales_amount'].idxmax(), 'date']
                 max_sales_gender = product_data.loc[product_data['sales_amount'].idxmax(), 'gender']
