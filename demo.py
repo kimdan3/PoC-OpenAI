@@ -251,7 +251,7 @@ async def main() -> None:
         app_logger.info("Starting application")
         demo = build_demo()
         app_logger.info("Launching Gradio interface")
-        demo.launch(share=True)
+        demo.launch()
     except Exception as e:
         app_logger.error(f"Application error: {e}")
         raise
